@@ -479,7 +479,13 @@ const exchange_abi =  [
     "type": "event"
   },
   {
-    "inputs": [],
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "minTokenReceive",
+        "type": "uint256"
+      }
+    ],
     "name": "addLiquidity",
     "outputs": [],
     "stateMutability": "payable",
@@ -530,30 +536,6 @@ const exchange_abi =  [
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_address",
-        "type": "address"
-      }
-    ],
-    "name": "getRemovalReward",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
     "inputs": [],
     "name": "getReserves",
     "outputs": [
@@ -572,6 +554,30 @@ const exchange_abi =  [
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_address",
+        "type": "address"
+      }
+    ],
+    "name": "getReward",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "getSwapFee",
     "outputs": [
@@ -587,35 +593,6 @@ const exchange_abi =  [
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "amountTokens",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "amountETH",
-        "type": "uint256"
-      }
-    ],
-    "name": "getSwapReward",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -739,12 +716,30 @@ const exchange_abi =  [
         "type": "uint256"
       },
       {
-        "internalType": "uint8",
-        "name": "option",
+        "internalType": "enum TokenExchange.option",
+        "name": "choice",
         "type": "uint8"
       }
     ],
     "name": "updateLps",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "amountTokens",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amountETH",
+        "type": "uint256"
+      }
+    ],
+    "name": "updateReward",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -811,7 +806,10 @@ async function getPoolState() {
 /*** ADD LIQUIDITY ***/
 async function addLiquidity(amountEth, maxSlippagePct) {
     /** TODO: ADD YOUR CODE HERE **/
-    await exchange_contract.connect(provider.getSigner(defaultAccount)).addLiquidity({ value: ethers.utils.parseEther(amountEth) })
+    const currentState = await getPoolState();
+    const minTokenReceive = Number(amountEth) * currentState.token_eth_rate * (100 - Number(maxSlippagePct)) / 100;
+    console.log(minTokenReceive);
+    await exchange_contract.connect(provider.getSigner(defaultAccount)).addLiquidity(Math.floor(minTokenReceive), { value: ethers.utils.parseEther(amountEth) })
 }
 
 /*** REMOVE LIQUIDITY ***/

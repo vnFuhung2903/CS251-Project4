@@ -42,6 +42,12 @@ contract TokenExchange is Ownable {
 
     uint private multiplier = 10**18;
 
+    enum option {
+        a,
+        r,
+        rAll
+    }
+
     constructor() Ownable(msg.sender) {}
     
 
@@ -59,6 +65,7 @@ contract TokenExchange is Ownable {
         // require pool does not yet exist:
         require (token_reserves == 0, "Token reserves was not 0");
         require (eth_reserves == 0, "ETH reserves was not 0.");
+        require(token.decimals() == 18, "Token decimal is not 18");
 
         // require nonzero values were sent
         require (msg.value > 0, "Need eth to create pool.");
@@ -100,14 +107,14 @@ contract TokenExchange is Ownable {
         return (lps[msg.sender], total_shares);
     }
 
-    function updateLps(address _address, uint token_transfer, uint8 option) public {
+    function updateLps(address _address, uint token_transfer, option choice) public {
 
-        if(option == 0) {
+        if(choice == option.rAll) {
             lps[_address] = 0;
             total_shares -= total_shares * token_transfer / token_reserves;
         }
 
-        if(option == 1) {
+        if(choice == option.a) {
             if(lps[_address] == 0) {
                 lp_providers.push(_address);
             }
@@ -115,7 +122,7 @@ contract TokenExchange is Ownable {
             total_shares += total_shares * token_transfer / token_reserves;
         }
 
-        if(option == 2) {
+        if(choice == option.r) {
             lps[_address] -= total_shares * token_transfer / token_reserves;
             total_shares -= total_shares * token_transfer / token_reserves;
         }
@@ -150,7 +157,7 @@ contract TokenExchange is Ownable {
 
     // Function addLiquidity: Adds liquidity given a supply of ETH (sent to the contract as msg.value).
     // You can change the inputs, or the scope of your function, as needed.
-    function addLiquidity() 
+    function addLiquidity(uint minTokenReceive) 
         external 
         payable
     {
@@ -159,13 +166,16 @@ contract TokenExchange is Ownable {
        uint amountTokens = token_reserves * msg.value / eth_reserves;
        require(amountTokens <= token.balanceOf(msg.sender), "Not have enough tokens to add liquidity.");
 
+       // Check slippage percentage
+       require(amountTokens >= minTokenReceive, "Slippage");
+
        token.transferFrom(msg.sender, address(this), amountTokens);
        token_reserves += amountTokens;
        eth_reserves += msg.value;
        k = token_reserves * eth_reserves;
 
        //Update lps
-       updateLps(msg.sender, amountTokens, 1);
+       updateLps(msg.sender, amountTokens, option.a);
     }
 
 
@@ -178,21 +188,21 @@ contract TokenExchange is Ownable {
         /******* TODO: Implement this function *******/
         uint amountTokens = token_reserves * amountETH / eth_reserves;
         require(eth_reserves > amountETH && token_reserves > amountTokens, "Not have enough tokens/eth to remove liquidity");
+        require(lps[msg.sender] * token_reserves >= total_shares * amountTokens, "Not provide enough liquidity to remove");
 
         // Check slippage percentage
-        require(lps[msg.sender] * token_reserves >= total_shares * amountTokens, "Not provide enough liquidity to remove");
         require(amountTokens >= minTokenReceive, "Slippage");
 
         (uint token_fee, uint eth_fee) = getReward(msg.sender);
-        bool success = token.approve(address(this), amountTokens + token_fee);
-        require(success, "Token doesn't approve");
-        token.transferFrom(address(this), msg.sender, amountTokens + token_fee);
+        token.transfer(msg.sender, amountTokens + token_fee);
         token_reserves -= amountTokens;
         payable(msg.sender).transfer(amountETH + eth_fee);
         eth_reserves -= amountETH;
         k = token_reserves * eth_reserves;
 
-        updateLps(msg.sender, amountTokens, 2);
+        if(msg.sender != address(this)) {
+            updateLps(msg.sender, amountTokens, option.r);
+        }
     }
 
     // Function removeAllLiquidity: Removes all liquidity that msg.sender is entitled to withdraw
@@ -203,23 +213,11 @@ contract TokenExchange is Ownable {
     {
         /******* TODO: Implement this function *******/
         uint amountETH = lps[msg.sender] * eth_reserves / total_shares;
-        uint amountTokens = lps[msg.sender] * token_reserves / total_shares;
-        require(eth_reserves > amountETH && token_reserves > amountTokens, "Not have enough tokens/eth to remove liquidity");
+        uint amountTokens = amountETH * token_reserves / eth_reserves;
         
-        // Check slippage percentage
-        require(lps[msg.sender] * token_reserves >= total_shares * amountTokens, "Not provide enough liquidity to remove");
-        require(amountTokens >= minTokenReceive, "Slippage");
+        removeLiquidity(amountETH, minTokenReceive);
 
-        (uint token_fee, uint eth_fee) = getReward(msg.sender);
-        bool success = token.approve(address(this), amountTokens + token_fee);
-        require(success, "Token doesn't approve");
-        token.transferFrom(address(this), msg.sender, amountTokens + token_fee);
-        token_reserves -= amountTokens;
-        payable(msg.sender).transfer(amountETH + eth_fee);
-        eth_reserves -= amountETH;
-        k = token_reserves * eth_reserves;
-
-        updateLps(msg.sender, amountTokens, 0);
+        updateLps(msg.sender, amountTokens, option.rAll);
     }
     /***  Define additional functions for liquidity fees here as needed ***/
 
@@ -268,9 +266,7 @@ contract TokenExchange is Ownable {
 
         updateReward(amountTokens, msg.value);
         eth_reserves += msg.value;
-        bool success = token.approve(address(this), amountTokens - amountTokens * swap_fee_numerator / swap_fee_denominator);
-        require(success, "Token doesn't approve");
-        token.transferFrom(address(this), msg.sender, amountTokens - amountTokens * swap_fee_numerator / swap_fee_denominator);
+        token.transfer(msg.sender, amountTokens - amountTokens * swap_fee_numerator / swap_fee_denominator);
         token_reserves -= amountTokens;
         k = token_reserves * eth_reserves;
     }
